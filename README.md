@@ -1,0 +1,149 @@
+# 织联 · 通用关联信息库
+
+React + Vite 前端，PHP 7.4 PDO 后端，MySQL 8.0 数据库。面向小团队，记录任意对象之间的关联。
+
+正式部署、HTTPS、MySQL 数据迁移、备份与升级步骤见 [部署指南](DEPLOYMENT.md)。[Nginx 配置模板](deploy/nginx.conf.example) 使用 HTTPS 443，沿用现有 `include php7.inc;` 和 `php7-handler`，适配 PHP 7.4；启用前填写域名、证书与私钥的实际路径。
+
+## 获取项目
+
+```bash
+git clone git@github.com:qdog2012/links.git
+cd links
+npm ci
+npm run build
+```
+
+Git 仓库包含源码、测试和部署模板，不包含 `dist`、`node_modules`、数据库数据或 `backend/.env`。克隆后需先构建前端，并按下文「在其它电脑运行」配置 MySQL 和 PHP。配置模板为 `backend/.env.example`。已打包的项目压缩包包含前端构建结果，可按部署指南直接使用。
+
+## 本机立即试用
+
+此电脑已经配置并启动：
+
+- 前端开发入口（运行 `npm run dev` 后）：http://127.0.0.1:5173
+- 完整构建入口：http://127.0.0.1:8765
+- 本机独立 MySQL 8.0.40：`127.0.0.1:13306`，数据库 `zhilian`
+- 数据库连接配置：`backend/.env`（已生成随机数据库密码，请勿分享）
+
+打开页面后先显示**示例空间**。其中的修改只保存在当前浏览器。点击「注册」，填写姓名、唯一登录账号、密码、确认密码和第一个项目名称，注册后自动登录并进入自己的项目。创建时可选择是否加入示例数据。已有用户时仍然可以注册，新用户不会自动获得其他人的项目权限。
+
+点击顶部文件夹按钮「我的项目」，可以创建更多项目、修改自己项目的名称和说明、切换项目；列表分别展示「我的项目」和「参与协作」。项目默认只有创建者可以访问。手机上使用顶部文件夹图标打开同一入口。
+
+需要协作时，对方先注册，再由当前项目管理员在「项目成员」中输入对方的登录账号并分配角色。添加、降权和移出均只影响当前项目，不会修改对方的登录密码或其他项目。创建者始终保留管理员权限。
+
+示例空间里的临时修改不会自动迁移，可以先导出 JSON，再在自己的项目导入。
+
+需要重新启动时，在此项目目录运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-local.ps1
+```
+
+该脚本优先使用已运行的数据库，仅在本机便携 MySQL 路径存在且端口未启用时启动它。PHP 内置服务器只监听 `127.0.0.1`，适合本机试用。
+
+## 功能
+
+- 对象类型可自由输入，支持自定义属性、标签、负责人、状态和核实时间。
+- 关系具有方向，支持自定义类型、角色 / 权限、维护人、信息来源和有效期。
+- 图谱中选中一个对象后点击「新建对象」，表单默认以选中对象为起点，保存时同时建立「起点对象 → 新对象」关系。可以更换起点、修改关系类型，或取消勾选只创建独立对象；未选对象、从对象目录新建或编辑已有对象时不会自动关联。对象、关系及各自变更记录在同一事务中保存，关联失败时整体回滚。
+- 关系图支持平移、缩放、选中高亮、类型 / 负责人筛选、1–3 层局部关联、整理和保存布局。
+- 路径查询使用双向遍历寻找最短关联路径，图中的箭头仍保留原始关系方向。
+- 对象目录、关系目录、详情面板、待核实清单。
+- 不物理删除对象与关系；通过停用、归档、结束状态保留历史信息。默认图谱排除停用对象、未生效 / 到期 / 结束关系。
+- 记录每次对象 / 关系修改前后的内容、操作人和时间；界面展示最近 500 条审计，数据库保留全部记录。
+- 自助注册、登录 / 退出，每个账号拥有独立项目，并可创建多个项目。
+- 对象、关系、布局、导入 / 导出与变更记录按项目隔离；服务器校验成员身份与权限，修改项目编号不能越权。
+- 管理员 / 编辑者 / 查看者三种项目角色。管理员管理协作者和内容，编辑者维护内容，查看者阅读项目及变更记录；批量导出需要编辑者或管理员权限。项目资料仅创建者可修改。
+- 响应式页面、可滚动的手机表单和详情面板；移动端可注册、登录、切换项目和维护信息。
+- 版本号用于防止多人编辑互相覆盖。页面每 20 秒同步一次；有打开表单时暂停自动刷新。
+- JSON 导入 / 导出。导入为新增记录，不覆盖已有对象；重复导入会产生重复对象。校验失败会回滚整个导入。
+
+待核实规则：对象超过 90 天未确认、缺少负责人，或没有有效关联；关系目录的待核实规则为超过 90 天未确认或缺少维护人。
+
+## 在其它电脑运行
+
+依赖：Node.js 22.12+（本机 24，仅构建前端时需要）、PHP 7.4（本机验证版本 7.4.33）、PHP `pdo_mysql` 扩展、MySQL 8.0。后端以 PHP 7.4 为目标版本，无 Composer 依赖。
+
+1. 用有权限的 MySQL 账号执行下面示例，密码自行替换：
+
+```sql
+CREATE DATABASE zhilian CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+CREATE USER 'zhilian'@'127.0.0.1' IDENTIFIED BY 'replace-with-your-password';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES
+ON zhilian.* TO 'zhilian'@'127.0.0.1';
+```
+
+2. 复制 `backend/.env.example` 为 `backend/.env`，填写连接信息。首次请求会创建数据表，也可提前导入 `backend/schema.sql`。`backend/storage` 需要 PHP 可写，以保存登录限流记录。
+
+3. 安装并构建前端：
+
+```powershell
+npm ci
+npm run build
+```
+
+4. 运行 PHP 并打开 http://127.0.0.1:8765 ：
+
+```powershell
+php -S 127.0.0.1:8765 -t backend/public backend/router.php
+```
+
+若 Windows PHP 没启用 MySQL 扩展，可以在 `php.ini` 配置 `extension_dir` 和 `extension=pdo_mysql`，或在启动时传入：
+
+```powershell
+php -d extension_dir="D:\tools\php\ext" -d extension=php_pdo_mysql.dll -S 127.0.0.1:8765 -t backend/public backend/router.php
+```
+
+开发时另运行 `npm run dev`，Vite 会将 `/api` 代理到 PHP 的 8765 端口。
+
+## 项目结构
+
+```text
+src/                   React 界面、图谱和关系查询
+backend/public/        PHP JSON API 入口
+backend/router.php     本机路由和构建产物服务
+backend/schema.sql     MySQL 8.0 表结构
+backend/seed.json      明确标注的示例数据
+backend/.env.example   连接配置模板
+deploy/                Nginx 站点与现有 php7.inc 内容示例
+tests/                 关系算法和真实数据库接口检查
+dist/                  前端构建结果
+```
+
+`users` 和 `sessions` 管理账号及会话，`projects` 保存创建者和项目资料，`project_members` 保存项目级角色。`entities`、`relations`、`audit` 均带 `project_id`；关系两端必须属于同一项目。两端使用独立对象编号，同名对象不会被自动合并。
+
+前端用 `X-Project-Id` 请求头选择当前项目，API 根据登录会话检查访问权限。用户和项目接口分别为 `/api/register`、`/api/login`、`/api/logout`、`/api/projects`、`/api/projects/{id}`；`/api/users` 管理当前项目的协作者。
+
+升级旧版时，首次请求会自动迁移至版本 2：原共享空间保留为一个项目，原成员及角色保持；没有个人项目的旧用户会获得个人项目。升级前应先备份 MySQL。本机升级前的备份已保存在工作目录。数据库版本与 JSON 导出格式版本独立，JSON 格式仍为版本 1。
+
+## 验证
+
+```powershell
+npm test
+npm run build
+php -l backend/public/index.php
+php -l backend/projects.php
+php -l backend/dispatch.php
+```
+
+已通过 5 项关系算法测试和 70 项真实 MySQL 接口检查，覆盖注册校验、多项目隔离、协作权限、自我降权、并发版本冲突、审计、导入事务回滚，以及新建对象附带起始关系的方向、权限和整体回滚。浏览器检查覆盖注册表单、登录、项目创建 / 修改 / 切换、从选中对象新建并关联、取消自动关联、刷新后持久化和移动端显示。
+
+HTTPS Nginx 模板另在本机 Nginx 1.28.0 + PHP 7.4.33 FastCGI 隔离环境通过语法检查和 23 项检查，覆盖 TLS 1.2 / 1.3、PHP 的 HTTPS 状态、API 路由与请求数据、静态文件和私有路径。使用临时测试证书，尚未在目标部署服务器上执行。
+
+`tests/projects-api.mjs` 必须指向**独立的临时测试数据库**，会创建随机命名的测试账号、项目及记录；不要指向正式数据库。配置另一个 PHP 服务到测试数据库后运行：
+
+```powershell
+$env:ZHILIAN_TEST_URL='http://127.0.0.1:8766'
+node tests/projects-api.mjs
+```
+
+## 以后共享给团队
+
+完整服务器配置与操作步骤见 [DEPLOYMENT.md](DEPLOYMENT.md)，提供 Nginx + PHP 7.4-FPM + MySQL 8.0 示例。PHP 7.4 需要由服务器已有运行环境或提供该版本的软件源安装。
+
+本机试用通过后，可把 PHP API 部署到 Nginx / Apache + PHP-FPM，静态前端使用 `dist`，同域转发 `/api`。本项目的 Nginx 示例仅监听 `443 ssl`，在 `server` 中使用 `root .../backend/public;` 和 `include php7.inc;`，静态页面单独使用 `dist`；`/api/...` 通过内部改写进入 PHP 入口。先准备域名证书与私钥，服务器设置 `SESSION_SECURE=1`。不要把整个项目设为网站根目录，避免暴露 `.env`、SQL 和源码。不要用 PHP 内置服务器承载正式团队访问，并对 MySQL 做定期备份。
+
+本版使用项目级权限，尚不包含邮件验证、自助找回密码、单对象权限、企业单点登录、文件附件或外部系统自动采集。账号使用用户名登录，密码加密存储；注册密码至少 8 字符，最多 72 字节，中文和表情占用多个字节。图谱在浏览器端渲染，适合先用几百个对象验证使用习惯；每次 JSON 导入限制为 2000 个对象 / 10000 条关系，不能据此保证同等规模的图谱帧率。
+
+JSON 导出仅包含对象和关系。完整恢复还需要 MySQL 备份，才能保留成员和全部审计记录。不要把账号密码、令牌或私钥作为对象属性录入；可保存密码管理工具中的条目编号。
+
+前端无运行时图谱 CDN 依赖；字体会尝试加载 Google Fonts，离线时自动回退到电脑上的中文字体。React Flow 的归属链接保留在画布中。

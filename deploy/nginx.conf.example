@@ -1,0 +1,51 @@
+# Load this HTTPS server block inside Nginx's http context.
+# php7.inc and the php7-handler upstream come from the existing PHP 7.4 setup.
+# Prepare the certificate files before enabling this configuration.
+server {
+    listen 443 ssl;
+    server_name relations.example.com;
+
+    ssl_certificate /etc/nginx/ssl/relations.example.com/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/relations.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:zhilianSSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    # php7.inc builds SCRIPT_FILENAME from this server-level root.
+    root /var/www/zhilian/backend/public;
+    index index.html;
+    client_max_body_size 5m;
+
+    access_log /var/log/nginx/zhilian-access.log;
+    error_log /var/log/nginx/zhilian-error.log;
+
+    location = /api {
+        rewrite ^ /index.php last;
+    }
+    location ^~ /api/ {
+        # Re-select the PHP location; preserve method, body and original REQUEST_URI.
+        rewrite ^ /index.php last;
+    }
+
+    location ~ /\.(?!well-known(?:/|$)) { return 404; }
+    location ~* ^/(backend|src|tests|node_modules|deploy)(/|$) { return 404; }
+    # Only the public API entry point is executable.
+    location ~ ^/(?!index\.php$).*\.php$ { return 404; }
+
+    include php7.inc;
+
+    location /assets/ {
+        root /var/www/zhilian/dist;
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=604800, immutable";
+    }
+    location = /index.html {
+        root /var/www/zhilian/dist;
+        add_header Cache-Control "no-cache";
+    }
+    location / {
+        root /var/www/zhilian/dist;
+        try_files $uri $uri/ /index.html;
+    }
+}

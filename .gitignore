@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+backend/storage/*
+!backend/storage/.gitkeep
+*.log
+*.pid
+*.pem
+*.key
+*.p12
+*.pfx
+work/
