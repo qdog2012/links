@@ -67,6 +67,17 @@ sudo -u deploy env PATH="/serverdata/runenv/node/bin:/usr/local/bin:/usr/bin:/bi
 
 通常由部署账号执行 Git 和 npm，`www-data` / `www` 作为 Nginx 与 PHP 的运行用户或共享组。无需为了构建修改整个项目的所有者。若加入 PATH 后仍找不到 Node.js，检查 `/serverdata/runenv/node/bin/node` 是否存在，以及部署账号是否能执行文件、穿过各级父目录。
 
+如果当前通过 `www-data` 构建，npm 默认缓存可能落在该用户的主目录 `/var/www/.npm`；没有权限创建时会报 `EACCES: permission denied, mkdir '/var/www'`。可为 npm 创建独立的可写缓存，并在安装和构建时显式指定：
+
+```bash
+sudo install -d -o www-data -g www-data -m 0750 /var/cache/links-npm
+cd /serverdata/wwwroot/links
+sudo -u www-data env PATH="/serverdata/runenv/node/bin:/usr/local/bin:/usr/bin:/bin" npm --cache=/var/cache/links-npm ci --include=dev
+sudo -u www-data env PATH="/serverdata/runenv/node/bin:/usr/local/bin:/usr/bin:/bin" npm --cache=/var/cache/links-npm run build
+```
+
+这一步只解决缓存目录权限。项目目录及已有 `node_modules`、`dist` 也需由构建账号写入；此前若由另一个账号执行 Git / npm，应继续使用那个部署账号，并为它指定可写缓存。无需修改 `/var/www` 的权限或升级 npm 来解决此错误。
+
 PHP-FPM 需要启用 `PDO`、`pdo_mysql` 和 `json`；本项目不依赖 `mbstring`。若安装了多个 PHP 版本，命令行的 `php` 可能与网站版本不同；CLI 检查应使用实际 PHP 7.4 可执行文件，现有 `php7-handler` 必须指向 PHP 7.4-FPM。
 
 使用固定的部署账号执行 Git 和 npm。确认该账号的 SSH 公钥已在 GitHub 仓库的 Settings → Deploy keys 中获得读取权限；已有密钥可直接使用。不要把私钥上传到 GitHub。验证：
@@ -335,6 +346,7 @@ curl --fail https://relations.example.com/api/state
 | --- | --- |
 | `database: false` / MySQL 连接失败 | `.env` 的地址、端口、账号和密码；MySQL 服务；PHP-FPM 是否启用 `pdo_mysql`。CLI PHP 的扩展配置可能与 FPM 不同。 |
 | npm 报 `/usr/bin/env: 'node': No such file or directory` | npm 通过 PATH 启动 Node.js；将实际 Node.js 的 `bin` 目录加入 PATH。`sudo -u` 执行时用 `env PATH=...` 显式传入，详见第 2.1 节。 |
+| npm 报 `EACCES: permission denied, mkdir '/var/www'` | 当前构建用户无法写入默认缓存 `/var/www/.npm`。创建该用户拥有的独立缓存目录，用 `npm --cache=...` 指定；继续使用同一部署账号，详见第 2.1 节。 |
 | `nginx -t` 报找不到 `php7.inc` 或 upstream | 确认 Nginx 主配置目录中的 include 文件，以及 `http` 中已有的 `php7-handler` 定义。 |
 | `nginx -t` 报证书或私钥加载失败 | `ssl_certificate` 和 `ssl_certificate_key` 的实际路径、配对关系与读取权限；先准备证书再启用站点。 |
 | 浏览器提示证书无效 | 证书中的域名、有效期和完整中间证书链；内网证书的签发机构是否受设备信任。 |
