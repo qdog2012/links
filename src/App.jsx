@@ -59,7 +59,7 @@ function Graph({entities,relations,selected,selectedKind,onSelect,focus,depth,in
     const hot=inPath || (selectedKind==='relation'&&selected===r.id) || (selectedKind==='entity'&&(r.source===selected||r.target===selected));
     const faded=selectedKind==='entity'&&selected&&!hot;
     return {id:r.id,source:r.source,target:r.target,sourceHandle:'s-'+out,targetHandle:'t-'+into,type:'default',label:r.type+(r.role?' · '+r.role:''),markerEnd:{type:MarkerType.ArrowClosed,width:16,height:16,color:hot?'#397f74':'#a8aea8'},
-      style:{stroke:hot?'#397f74':'#b6bcb5',strokeWidth:hot?1.7:1.1,opacity:faded?.33:1,strokeDasharray:activeRelation(r)?undefined:'5 4'},labelStyle:{fill:hot?'#376a60':'#838b83',fontSize:11,fontWeight:hot?500:400,opacity:faded?.45:1},labelBgStyle:{fill:'#f6f7f3',fillOpacity:.95},labelBgPadding:[5,3],labelBgBorderRadius:3,interactionWidth:20};
+      style:{stroke:hot?'#397f74':'#b6bcb5',strokeWidth:hot?1.7:1.1,opacity:faded?.33:1,strokeDasharray:activeRelation(r)?undefined:'5 4'},labelStyle:{fill:hot?'#376a60':'#838b83',fontSize:13,fontWeight:hot?500:400,opacity:faded?.45:1},labelBgStyle:{fill:'#f6f7f3',fillOpacity:.95},labelBgPadding:[5,3],labelBgBorderRadius:3,interactionWidth:20};
   });
   const fitKey=nodes.map(n=>n.id).sort().join('|');
   useEffect(()=>{const timer=setTimeout(()=>flow.fitView({padding:.08,duration:300,maxZoom:1.15}),80);return()=>clearTimeout(timer);},[fitKey,showDetail,focus]);
@@ -144,7 +144,7 @@ export default function App() {
   const [data,setData]=useState(()=>{try {const saved=JSON.parse(localStorage.getItem('zhilian-demo-v1'));return saved?.demo?saved:demoData();}catch{return demoData();}});
   const [connection,setConnection]=useState(false),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[page,setPage]=useState('graph');
   const [search,setSearch]=useState(''),[selected,setSelected]=useState('crm'),[selectedKind,setSelectedKind]=useState('entity'),[showDetail,setShowDetail]=useState(()=>window.innerWidth>680);
-  const [types,setTypes]=useState(null),[owner,setOwner]=useState(''),[focus,setFocus]=useState(true),[depth,setDepth]=useState(1),[includeEnded,setIncludeEnded]=useState(false),[reviewOnly,setReviewOnly]=useState(false),[pathIds,setPathIds]=useState(null);
+  const [types,setTypes]=useState(null),[owner,setOwner]=useState(''),[focus,setFocus]=useState(false),[depth,setDepth]=useState(1),[includeEnded,setIncludeEnded]=useState(false),[reviewOnly,setReviewOnly]=useState(false),[pathIds,setPathIds]=useState(null);
   const [modal,setModal]=useState(null),[toast,setToast]=useState(''),[users,setUsers]=useState([]),[pathForm,setPathForm]=useState({source:'',target:''}),[pathError,setPathError]=useState('');
   const [importData,setImportData]=useState(null),[importError,setImportError]=useState('');
   const searchRef=useRef(),importRef=useRef(),toastTimer=useRef(),refreshSequence=useRef(0);

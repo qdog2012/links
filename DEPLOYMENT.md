@@ -1,6 +1,6 @@
 # 织联部署指南
 
-本文对应版本 1.1.1，包含本机试用、Ubuntu 24.04 团队部署、现有数据迁移与 GitHub 更新。服务器项目目录为 `/serverdata/wwwroot/links`，沿用已有 MySQL 8.0、Node.js、PHP 7.4 和 Nginx 环境，以及 `php7.inc` / `php7-handler`。本机已在 PHP 7.4.33 下通过接口验证；尚未连接你的目标服务器执行部署。
+本文对应版本 1.1.2，包含本机试用、Ubuntu 24.04 团队部署、现有数据迁移与 GitHub 更新。服务器项目目录为 `/serverdata/wwwroot/links`，沿用已有 MySQL 8.0、Node.js、PHP 7.4 和 Nginx 环境，以及 `php7.inc` / `php7-handler`。本机已在 PHP 7.4.33 下通过接口验证；尚未连接你的目标服务器执行部署。
 
 ## 1. 本机试用
 
