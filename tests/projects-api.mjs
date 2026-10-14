@@ -17,6 +17,7 @@ r=await bob.request('register','POST',{username:usernameB,name:'测试乙',passw
 const pB=r.body.project.id,idB=r.body.user.id;bob.setProject(pB);
 await carol.request('register','POST',{username:usernameC,name:'测试丙',password,project_name:'丙的默认项目'});
 let stateA=(await alice.request('state')).body,stateB=(await bob.request('state')).body;
+check(stateA.entity_types.length===0&&stateB.entity_types.length===0,'新用户的类型记录为空，项目示例不预填个人类型');
 check(stateA.entities.length===13&&stateA.relations.length===15,'示例数据仅加载到注册用户的项目');
 check(stateB.entities.length===0&&stateB.relations.length===0&&stateB.projects.every(p=>p.id!==pA),'其他用户无法看到甲的项目');
 check((await guest.request('register','POST',{username:usernameA,name:'重复',password,project_name:'重复'})).status===409,'重复账号被拒绝');
@@ -35,6 +36,7 @@ const nA=stateA.entities[0];
 check((await bob.request('entities/'+nA.id,'PUT',{...nA,name:'非法覆盖'})).status===404,'其他项目的对象编号不能用于修改');
 check((await bob.request('entities','POST',{name:'非法创建',type:'系统'},pA)).status===403,'未加入项目不能新建对象');
 r=await bob.request('entities','POST',{name:'乙的资源',type:'资源',owner:'测试乙'});check(r.status===200,'用户可以维护自己的项目');const nB=r.body.record;
+check((await bob.request('state')).body.entity_types.includes('资源')&&(await alice.request('state')).body.entity_types.length===0,'新建类型只归属于实际操作用户');
 check((await bob.request('relations','POST',{source:nB.id,target:nA.id,type:'跨项目关联'})).status===400,'关系两端必须属于同一项目');
 r=await alice.request('projects','POST',{name:'甲的第二个项目',description:'独立记录'});check(r.status===200,'同一用户可以创建多个项目');const pA2=r.body.project.id;
 check((await alice.request('state','GET',null,pA2)).body.entities.length===0,'新项目不混入原项目数据');
@@ -61,8 +63,9 @@ check((await bob.request('audit','GET',null,pA)).status===403,'移出后当前�
 check((await bob.request('state')).body.entities.some(n=>n.id===nB.id),'移出协作项目不影响其个人项目');
 check((await bob.request('state')).body.user.active==1,'移出协作项目不会停用用户账号');
 const countBefore=(await alice.request('state')).body.entities.length;
-check((await alice.request('import','POST',{format:'zhilian-library',schema_version:1,entities:[{id:'new1',name:'回滚',type:'系统'}],relations:[{source:'new1',target:nB.id,type:'非法关联'}]})).status===400,'非法跨项目导入被拒绝');
+check((await alice.request('import','POST',{format:'zhilian-library',schema_version:1,entities:[{id:'new1',name:'回滚',type:'失败导入类型'}],relations:[{source:'new1',target:nB.id,type:'非法关联'}]})).status===400,'非法跨项目导入被拒绝');
 check((await alice.request('state')).body.entities.length===countBefore,'失败导入仍整体回滚');
+check(!(await alice.request('state')).body.entity_types.includes('失败导入类型'),'导入失败时不会留下类型记录');
 r=await alice.request('entities/'+nA.id,'PUT',{...nA,description:'版本更新'});check(r.status===200&&r.body.record.version===2,'项目内更新递增版本');
 check((await alice.request('entities/'+nA.id,'PUT',nA)).status===409,'项目内并发编辑防止覆盖');
 const auditA=(await alice.request('audit')).body.entries,auditB=(await bob.request('audit')).body.entries;
@@ -88,9 +91,38 @@ for(const [label,initial_relation] of [
   ['不存在的起点',{source:'0'.repeat(24),type:'关联'}],
   ['空白关系类型',{source:nA.id,type:' '}],
   ['格式错误的起始关系','invalid']
-])check((await alice.request('entities','POST',{name:'不应保留的对象',type:'系统',initial_relation})).status===400,label+'被拒绝');
+])check((await alice.request('entities','POST',{name:'不应保留的对象',type:'失败创建类型',initial_relation})).status===400,label+'被拒绝');
 linkedState=(await alice.request('state')).body;
 check(linkedState.entities.length===rollbackBefore.entities.length&&linkedState.relations.length===rollbackBefore.relations.length&&(await alice.request('audit')).body.entries.length===rollbackAudit,'起始关系失败时对象、关系和审计整体回滚');
 check((await alice.request('entities/'+linkedRecord.id,'PUT',{...linkedRecord,initial_relation:{source:nA.id,type:'关联'}})).status===400,'编辑对象不会附带新增起始关系');
 check((await bob.request('entities','POST',{name:'越权新建并关联',type:'系统',initial_relation:{source:nA.id,type:'关联'}},pA)).status===403,'组合创建仍校验项目访问权限');
+check(!linkedState.entity_types.includes('失败创建类型'),'新建对象及关系失败时类型记录也回滚');
+check(linkedState.entity_types.includes('设备')&&!linkedState.entity_types.includes('连接到'),'类型记录只收集对象类型');
+check((await alice.request('entities','POST',{name:'缺少类型',type:''})).status===400,'空对象类型必须填写后才能保存');
+
+const ownType='甲类型_'+suffix,otherType='乙类型_'+suffix,editedType='修改类型_'+suffix,importedType='导入类型_'+suffix;
+r=await alice.request('entities','POST',{name:'个人类型对象',type:' '+ownType+' ',user_id:idB,entity_types:['伪造类型']});
+check(r.status===200&&r.body.record.type===ownType,'用户可输入新类型，服务器规范化空白');
+const ownRecord=r.body.record;
+await alice.request('entities','POST',{name:'同类型对象',type:ownType});
+let personalTypes=(await alice.request('state')).body.entity_types;
+check(personalTypes.filter(t=>t===ownType).length===1&&!personalTypes.includes('伪造类型'),'类型记录去重，客户端不能伪造建议列表');
+check(!(await bob.request('state')).body.entity_types.includes(ownType),'客户端不能把类型登记到另一个账号');
+check((await alice.request('state','GET',null,pA2)).body.entity_types.includes(ownType),'同一账号跨项目复用个人类型记录');
+
+await alice.request('users/'+idB,'PUT',{role:'editor',active:true});
+r=await bob.request('entities','POST',{name:'协作用户的对象',type:otherType},pA);
+check(r.status===200&&(await alice.request('state')).body.entities.some(n=>n.id===r.body.record.id),'共享项目仍可查看其他用户创建的对象');
+check(!(await alice.request('state')).body.entity_types.includes(otherType)&&(await bob.request('state')).body.entity_types.includes(otherType),'共享项目中的类型建议仍按账号隔离');
+const bobTypesBefore=(await bob.request('state')).body.entity_types;
+r=await bob.request('entities/'+ownRecord.id,'PUT',{...ownRecord,name:'只改名称'},pA);
+check(r.status===200&&JSON.stringify((await bob.request('state')).body.entity_types)===JSON.stringify(bobTypesBefore),'仅修改他人对象名称不会收集其类型');
+r=await bob.request('entities/'+ownRecord.id,'PUT',{...r.body.record,type:editedType},pA);
+check(r.status===200&&(await bob.request('state')).body.entity_types.includes(editedType)&&!(await alice.request('state')).body.entity_types.includes(editedType),'编辑时引入的新类型记到编辑用户');
+r=await alice.request('import','POST',{format:'zhilian-library',schema_version:1,entities:[{id:'imported',name:'导入对象',type:importedType}],relations:[]});
+check(r.status===200&&(await alice.request('state')).body.entity_types.includes(importedType),'成功导入的类型归属于执行导入的用户');
+await alice.request('logout','POST',{});
+check((await guest.request('state')).body.entity_types.length===0,'未登录时不返回任何账号的类型记录');
+await alice.request('login','POST',{username:usernameA,password});
+check((await alice.request('state')).body.entity_types.includes(ownType),'类型记录重新登录后仍然保留');
 console.log(`\n${count} registration/project-isolation API checks passed.`);

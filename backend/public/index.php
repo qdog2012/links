@@ -88,5 +88,6 @@ function all_records($db,$table,$project) {
 }
 function insert_entity($db,$n,$project) { query($db,'INSERT INTO entities(id,project_id,body,version) VALUES(?,?,?,?)',[$n['id'],$project,json_encode($n,JSON_UNESCAPED_UNICODE),$n['version']]); }
 function insert_relation($db,$r,$project) { query($db,'INSERT INTO relations(id,project_id,source,target,body,version) VALUES(?,?,?,?,?,?)',[$r['id'],$project,$r['source'],$r['target'],json_encode($r,JSON_UNESCAPED_UNICODE),$r['version']]); }
+require ROOT.'/entity-types.php';
 require ROOT.'/projects.php';
 require ROOT.'/dispatch.php';

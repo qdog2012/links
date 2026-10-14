@@ -4,6 +4,10 @@ CREATE TABLE IF NOT EXISTS users (
  role ENUM('admin','editor','viewer') NOT NULL DEFAULT 'editor', active TINYINT(1) NOT NULL DEFAULT 1,
  created_at VARCHAR(40) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE IF NOT EXISTS user_entity_types (
+ user_id VARCHAR(32) NOT NULL, type VARCHAR(40) COLLATE utf8mb4_bin NOT NULL,
+ PRIMARY KEY(user_id,type), FOREIGN KEY(user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS projects (
  id VARCHAR(32) PRIMARY KEY, owner_id VARCHAR(32) NOT NULL,
  name VARCHAR(80) NOT NULL, description TEXT NOT NULL,
