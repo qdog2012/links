@@ -49,6 +49,24 @@ php -m
 mysql --version
 ```
 
+若 Node.js 安装在 `/serverdata/runenv/node/bin`，先在执行 Git / npm 的部署账号会话中加入 PATH，再检查版本和构建：
+
+```bash
+export PATH="/serverdata/runenv/node/bin:$PATH"
+node --version
+npm --version
+```
+
+仅使用 npm 的绝对路径仍可能报 `/usr/bin/env: 'node': No such file or directory`，因为 npm 的启动脚本通过 PATH 查找 `node`。`sudo -u` 通常会重置 PATH；切换到项目拥有者执行时，需要显式传入 Node.js 目录。例如下面的 `deploy` 应替换为实际部署账号，项目目录需由该账号写入：
+
+```bash
+cd /serverdata/wwwroot/links
+sudo -u deploy env PATH="/serverdata/runenv/node/bin:/usr/local/bin:/usr/bin:/bin" /serverdata/runenv/node/bin/npm ci --include=dev
+sudo -u deploy env PATH="/serverdata/runenv/node/bin:/usr/local/bin:/usr/bin:/bin" /serverdata/runenv/node/bin/npm run build
+```
+
+通常由部署账号执行 Git 和 npm，`www-data` / `www` 作为 Nginx 与 PHP 的运行用户或共享组。无需为了构建修改整个项目的所有者。若加入 PATH 后仍找不到 Node.js，检查 `/serverdata/runenv/node/bin/node` 是否存在，以及部署账号是否能执行文件、穿过各级父目录。
+
 PHP-FPM 需要启用 `PDO`、`pdo_mysql` 和 `json`；本项目不依赖 `mbstring`。若安装了多个 PHP 版本，命令行的 `php` 可能与网站版本不同；CLI 检查应使用实际 PHP 7.4 可执行文件，现有 `php7-handler` 必须指向 PHP 7.4-FPM。
 
 使用固定的部署账号执行 Git 和 npm。确认该账号的 SSH 公钥已在 GitHub 仓库的 Settings → Deploy keys 中获得读取权限；已有密钥可直接使用。不要把私钥上传到 GitHub。验证：
@@ -270,7 +288,7 @@ mysql --host=127.0.0.1 --user=zhilian --password --default-character-set=utf8mb4
 
 通过 GitHub 更新时，先在测试环境验证新版本，并暂停正式站点访问 / 写入。备份数据库、旧代码、`dist` 和 `.env`，备份放在 `/serverdata/wwwroot/links` 之外。记录当前 `git rev-parse HEAD` 以便确认升级前版本。
 
-用同一个部署账号执行，任何一步失败都先停止后续操作，保留维护状态：
+用同一个部署账号执行，任何一步失败都先停止后续操作，保留维护状态。Node.js 位于自定义目录时，先按第 2.1 节设置 PATH；通过 `sudo -u` 执行则显式传入 PATH：
 
 ```bash
 cd /serverdata/wwwroot/links
@@ -316,6 +334,7 @@ curl --fail https://relations.example.com/api/state
 | 现象 | 检查位置 |
 | --- | --- |
 | `database: false` / MySQL 连接失败 | `.env` 的地址、端口、账号和密码；MySQL 服务；PHP-FPM 是否启用 `pdo_mysql`。CLI PHP 的扩展配置可能与 FPM 不同。 |
+| npm 报 `/usr/bin/env: 'node': No such file or directory` | npm 通过 PATH 启动 Node.js；将实际 Node.js 的 `bin` 目录加入 PATH。`sudo -u` 执行时用 `env PATH=...` 显式传入，详见第 2.1 节。 |
 | `nginx -t` 报找不到 `php7.inc` 或 upstream | 确认 Nginx 主配置目录中的 include 文件，以及 `http` 中已有的 `php7-handler` 定义。 |
 | `nginx -t` 报证书或私钥加载失败 | `ssl_certificate` 和 `ssl_certificate_key` 的实际路径、配对关系与读取权限；先准备证书再启用站点。 |
 | 浏览器提示证书无效 | 证书中的域名、有效期和完整中间证书链；内网证书的签发机构是否受设备信任。 |
