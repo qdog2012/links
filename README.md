@@ -15,6 +15,8 @@ npm run build
 
 Git 仓库包含源码、测试和部署模板，不包含 `dist`、`node_modules`、数据库数据或 `backend/.env`。克隆后需先构建前端，并按下文「在其它电脑运行」配置 MySQL 和 PHP。配置模板为 `backend/.env.example`。已打包的项目压缩包包含前端构建结果，可按部署指南直接使用。
 
+Ubuntu 24.04 服务器项目目录为 `/serverdata/wwwroot/links`，部署模板已采用该路径。沿用已有 MySQL 8.0、Node.js 和 PHP 7.4 环境；首次克隆、文件权限以及日常 `git pull --ff-only` 更新步骤见 [部署指南](DEPLOYMENT.md)。
+
 ## 本机立即试用
 
 此电脑已经配置并启动：

@@ -13,7 +13,7 @@ server {
     ssl_session_tickets off;
 
     # php7.inc builds SCRIPT_FILENAME from this server-level root.
-    root /var/www/zhilian/backend/public;
+    root /serverdata/wwwroot/links/backend/public;
     index index.html;
     client_max_body_size 5m;
 
@@ -36,16 +36,16 @@ server {
     include php7.inc;
 
     location /assets/ {
-        root /var/www/zhilian/dist;
+        root /serverdata/wwwroot/links/dist;
         try_files $uri =404;
         add_header Cache-Control "public, max-age=604800, immutable";
     }
     location = /index.html {
-        root /var/www/zhilian/dist;
+        root /serverdata/wwwroot/links/dist;
         add_header Cache-Control "no-cache";
     }
     location / {
-        root /var/www/zhilian/dist;
+        root /serverdata/wwwroot/links/dist;
         try_files $uri $uri/ /index.html;
     }
 }

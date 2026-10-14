@@ -1,6 +1,6 @@
 # 织联部署指南
 
-本文对应版本 1.1.0，包含本机试用、Linux 团队部署、现有数据迁移与升级备份。后端目标运行版本为 PHP 7.4，本机已在 PHP 7.4.33 下通过接口验证。服务器示例使用 Nginx、PHP 7.4-FPM 和 MySQL 8.0，路径及服务名采用 Ubuntu / Debian 的习惯；尚未在你的目标服务器上执行。
+本文对应版本 1.1.0，包含本机试用、Ubuntu 24.04 团队部署、现有数据迁移与 GitHub 更新。服务器项目目录为 `/serverdata/wwwroot/links`，沿用已有 MySQL 8.0、Node.js、PHP 7.4 和 Nginx 环境，以及 `php7.inc` / `php7-handler`。本机已在 PHP 7.4.33 下通过接口验证；尚未连接你的目标服务器执行部署。
 
 ## 1. 本机试用
 
@@ -20,10 +20,10 @@ powershell -ExecutionPolicy Bypass -File .\start-local.ps1
 
 ```text
 浏览器 → Nginx HTTPS
-           ├─ /           → /var/www/zhilian/dist
+           ├─ /           → /serverdata/wwwroot/links/dist
            └─ /api/*      → PHP-FPM → MySQL 8.0
 
-/var/www/zhilian/
+/serverdata/wwwroot/links/
   dist/                   公开的前端构建文件
   backend/public/index.php API 入口
   backend/dispatch.php     API 路由
@@ -36,38 +36,53 @@ powershell -ExecutionPolicy Bypass -File .\start-local.ps1
 
 Nginx 的 `server` 根目录指向 `backend/public`，使现有 `php7.inc` 中的 `$document_root$fastcgi_script_name` 能定位到 API 入口。前端各个静态 `location` 单独使用 `dist`，`/api/...` 内部改写到 `/index.php` 后交给 PHP 7.4。不要把整个项目设为网站根目录。当前配置面向单台 PHP 服务；注册 / 登录限流保存在本机文件中。生产运行无需 Vite、Node.js 或 Composer，也不需要启动 `backend/router.php` 或 PHP 内置服务器。
 
-### 2.1 安装服务与放置文件
+### 2.1 使用已有环境，从 GitHub 获取代码
 
-已有 PHP 7.4 的服务器或面板环境可直接使用现有 PHP-FPM。Ubuntu 24.04 的默认软件源不提供 PHP 7.4；下面的 PHP 安装命令只适用于已经配置了可提供该版本软件源的环境，不能只在原 8.3 安装命令中替换版本号。先确认软件包可用，并确认 MySQL 软件包提供的是 8.0：
-
-```bash
-apt-cache policy php7.4-fpm php7.4-mysql mysql-server
-```
-
-软件包可用时安装；已有对应服务可跳过：
+无需重新安装 MySQL、Node.js 或 PHP。先确认 Git 可用、Node.js 为 22.12+，以及站点实际使用 PHP 7.4：
 
 ```bash
-sudo apt update
-sudo apt install nginx mysql-server php7.4-fpm php7.4-mysql unzip
-sudo systemctl enable --now nginx mysql php7.4-fpm
-php7.4 -v
-php-fpm7.4 -v
+git --version
+node --version
+npm --version
+php -v
+php -m
 mysql --version
 ```
 
-确认 CLI 和 FPM 均为 PHP 7.4，建议使用 7.4.33。FPM 需要启用 `PDO`、`pdo_mysql` 和 `json`；本项目不依赖 `mbstring`。若安装了多个 PHP 版本，命令行的 `php` 和网站选择的 PHP-FPM 版本可能不同，Nginx 必须连接 7.4 的进程。使用服务器面板时，在站点配置中选择 PHP 7.4，并确认现有 `php7-handler` upstream 指向该版本的 FPM。
+PHP-FPM 需要启用 `PDO`、`pdo_mysql` 和 `json`；本项目不依赖 `mbstring`。若安装了多个 PHP 版本，命令行的 `php` 可能与网站版本不同；CLI 检查应使用实际 PHP 7.4 可执行文件，现有 `php7-handler` 必须指向 PHP 7.4-FPM。
 
-把源码包中的 `relation-library` 内容放到 `/var/www/zhilian`。至少保留上述 `dist` 和完整 `backend` 目录。若需要重新构建，在开发机或构建机执行 `npm ci`、`npm run build`，再上传新的 `dist`。
-
-若从 `git@github.com:qdog2012/links.git` 克隆，仓库不包含 `dist`。先在具备 Node.js 22.12+ 的构建机执行 `npm ci` 和 `npm run build`，再部署构建得到的 `dist` 及完整 `backend`，按本文创建服务器自己的 `.env`。
-
-代码和配置由部署管理员拥有，仅 `backend/storage` 允许 PHP 写入。Ubuntu 默认的 Nginx / PHP-FPM 用户为 `www-data`；使用其他用户时相应替换：
+使用固定的部署账号执行 Git 和 npm。确认该账号的 SSH 公钥已在 GitHub 仓库的 Settings → Deploy keys 中获得读取权限；已有密钥可直接使用。不要把私钥上传到 GitHub。验证：
 
 ```bash
-sudo chown -R root:www-data /var/www/zhilian
-sudo chmod -R u=rwX,g=rX,o= /var/www/zhilian
-sudo install -d -o www-data -g www-data -m 700 /var/www/zhilian/backend/storage
+ssh -T git@github.com
 ```
+
+出现 `successfully authenticated` 即表示认证正常（GitHub 不提供 SSH shell，该命令可能以退出码 1 结束）。
+
+以下示例以 `www-data` 为 Nginx / PHP-FPM 所在共享组。面板环境若使用 `www`，将 `TASK_WEB_GROUP` 改为 `www`；两者需要能读取站点文件，并能穿过 `/serverdata` 和 `/serverdata/wwwroot` 父目录。
+
+首次克隆到空目录：
+
+```bash
+TASK_WEB_GROUP=www-data
+sudo install -d -o "$(id -un)" -g "$TASK_WEB_GROUP" -m 2750 /serverdata/wwwroot/links
+git clone --branch main git@github.com:qdog2012/links.git /serverdata/wwwroot/links
+cd /serverdata/wwwroot/links
+npm ci --include=dev
+npm run build
+```
+
+仓库不包含 `dist`、`node_modules` 或服务器 `.env`，因此必须先构建。目录已有 Git checkout 时跳过创建与克隆，按第 4 节更新；已有非 Git 文件时先备份并整理目录，不要覆盖已有配置。源码压缩包包含 `dist`，使用压缩包时可直接放置项目内容。
+
+代码和配置由部署账号拥有；Nginx / PHP 读取代码，仅 `backend/storage` 允许 PHP 写入。构建完成后设置权限：
+
+```bash
+sudo chgrp -R "$TASK_WEB_GROUP" backend dist
+sudo chmod -R u=rwX,g=rX,o= backend dist
+chmod 2770 backend/storage
+```
+
+后续 Git / npm 继续使用同一个部署账号，不使用 `sudo git pull` 或 `sudo npm`。不要将整个项目改为 PHP 用户拥有或可写。
 
 ### 2.2 创建数据库
 
@@ -82,7 +97,15 @@ ON zhilian.* TO 'zhilian'@'127.0.0.1';
 
 应用在首次 `/api/state` 请求中创建表或迁移旧表，因此此版本的数据库账号需要上述建表与修改表权限。`/api/health` 只检查数据库连接，不执行迁移。MySQL 与 PHP 同机时仅需监听本机地址，无需对外开放数据库端口。
 
-复制 `backend/.env.example` 为 `backend/.env`，填写：
+首次部署复制配置模板并编辑；已有 `.env` 时保留原文件：
+
+```bash
+cd /serverdata/wwwroot/links
+test -f backend/.env || cp backend/.env.example backend/.env
+nano backend/.env
+```
+
+填写：
 
 ```dotenv
 DB_HOST=127.0.0.1
@@ -94,8 +117,8 @@ SESSION_SECURE=1
 ```
 
 ```bash
-sudo chown root:www-data /var/www/zhilian/backend/.env
-sudo chmod 640 /var/www/zhilian/backend/.env
+sudo chgrp "$TASK_WEB_GROUP" backend/.env
+chmod 640 backend/.env
 ```
 
 此处的 `3306` 是服务器示例；本机试用的 `13306` 不必复制到服务器。`.env` 使用逐行 `KEY=VALUE` 格式，不支持变量替换或行尾注释。若配置了同名 PHP-FPM 环境变量，环境变量会覆盖 `.env`。
@@ -124,7 +147,9 @@ sudo systemctl reload nginx
 
 ### 2.4 配置 Nginx（HTTPS）
 
-配置模板见 [deploy/nginx.conf.example](deploy/nginx.conf.example)。替换域名、证书与项目路径后，在现有站点的 `server` 配置中使用；Ubuntu / Debian 可保存为 `/etc/nginx/sites-available/zhilian`。配置使用 `listen 443 ssl;`，启用 TLS 1.2 / 1.3。已有站点配置中的 `listen 80;` 也应移除。
+配置模板见 [deploy/nginx.conf.example](deploy/nginx.conf.example)，项目路径已设置为 `/serverdata/wwwroot/links`。替换域名和证书路径后，在现有站点的 `server` 配置中使用。配置使用 `listen 443 ssl;`，启用 TLS 1.2 / 1.3。已有站点配置中的 `listen 80;` 也应移除。
+
+面板环境在面板编辑站点配置，沿用面板的 Nginx 命令、日志与证书路径。标准 Ubuntu Nginx 可保存为 `/etc/nginx/sites-available/links`，后文命令对应此布局。
 
 站点沿用 `include php7.inc;`。它引用已有的 `php7-handler` upstream，需由服务器现有 Nginx 的 `http` 配置定义，并指向 PHP 7.4-FPM；不要在 `server` 内定义或重复添加同名 upstream。相对 `include` 路径以 Nginx 主配置目录为基准，确认该目录中有 `php7.inc` 和 `fastcgi_params`。
 
@@ -156,7 +181,7 @@ server {
     ssl_session_timeout 1d;
     ssl_session_tickets off;
 
-    root /var/www/zhilian/backend/public;
+    root /serverdata/wwwroot/links/backend/public;
     index index.html;
     client_max_body_size 5m;
 
@@ -177,16 +202,16 @@ server {
     include php7.inc;
 
     location /assets/ {
-        root /var/www/zhilian/dist;
+        root /serverdata/wwwroot/links/dist;
         try_files $uri =404;
         add_header Cache-Control "public, max-age=604800, immutable";
     }
     location = /index.html {
-        root /var/www/zhilian/dist;
+        root /serverdata/wwwroot/links/dist;
         add_header Cache-Control "no-cache";
     }
     location / {
-        root /var/www/zhilian/dist;
+        root /serverdata/wwwroot/links/dist;
         try_files $uri $uri/ /index.html;
     }
 }
@@ -201,10 +226,12 @@ server {
 此 HTTPS 模板已在本机 Nginx 1.28.0 + PHP 7.4.33 FastCGI 隔离环境通过 `nginx -t` 和 23 项检查，覆盖 TLS 1.2 / 1.3 握手、PHP 收到的 HTTPS 状态、API 原始路径、查询参数、POST / PUT 请求体、会话与项目请求头、静态资源和私有路径拦截。验证使用临时测试证书及 PHP 入口；目标服务器的真实域名证书、FPM upstream 和文件权限仍需实际验证。
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/zhilian /etc/nginx/sites-enabled/zhilian
+sudo ln -s /etc/nginx/sites-available/links /etc/nginx/sites-enabled/links
 sudo nginx -t
 sudo systemctl reload nginx
 ```
+
+已存在启用链接时跳过 `ln -s`。后续 `git pull` 不会自动更新 Nginx 正在使用的站点文件；如模板有变更，将必要修改合入现有配置，保留实际域名和证书路径，再测试并重载。
 
 ### 2.5 验证与首次使用
 
@@ -241,12 +268,40 @@ mysql --host=127.0.0.1 --user=zhilian --password --default-character-set=utf8mb4
 
 定期使用 MySQL 备份整个 `zhilian` 库，并备份服务器 `.env`；备份放在网站目录之外并限制访问。`backend/storage` 只保存限流记录，不存业务数据。定期把备份恢复到独立数据库，确认能够读取项目和变更记录。
 
-升级时：
+通过 GitHub 更新时，先在测试环境验证新版本，并暂停正式站点访问 / 写入。备份数据库、旧代码、`dist` 和 `.env`，备份放在 `/serverdata/wwwroot/links` 之外。记录当前 `git rev-parse HEAD` 以便确认升级前版本。
 
-1. 暂停网站访问 / 写入，备份数据库、旧代码和 `.env`。
-2. 在测试环境验证新版本；替换 `dist` 和后端代码，保留服务器 `.env`、`backend/storage` 及其权限。
-3. 重新加载 PHP-FPM，避免 OPcache 继续使用旧代码：`sudo systemctl reload php7.4-fpm`。
-4. 请求 `/api/state` 触发迁移，检查日志并验证注册、登录、项目内容、权限和变更记录，再恢复访问。
+用同一个部署账号执行，任何一步失败都先停止后续操作，保留维护状态：
+
+```bash
+cd /serverdata/wwwroot/links
+git status --short
+```
+
+确认输出为空后继续；若存在修改，先审查和保存，不使用强制覆盖或 `git clean`。
+
+```bash
+git pull --ff-only origin main
+npm ci --include=dev
+npm run build
+
+# 按实际服务组设置；面板可能使用 www。
+TASK_WEB_GROUP=www-data
+sudo chgrp -R "$TASK_WEB_GROUP" backend dist
+sudo chmod -R u=rwX,g=rX,o= backend dist
+chmod 640 backend/.env
+chmod 2770 backend/storage
+```
+
+更新会保留 Git 忽略的 `.env` 和限流记录，业务数据仍在 MySQL 中。不重新创建数据库，也不再次覆盖导入 `schema.sql`。重新加载现有 PHP 7.4 服务，避免 OPcache 使用旧代码；若实际 systemd 服务名为 `php7.4-fpm`，执行 `sudo systemctl reload php7.4-fpm`，面板环境使用面板提供的重载操作。
+
+恢复站点访问后验证，替换为实际域名：
+
+```bash
+curl --fail https://relations.example.com/api/health
+curl --fail https://relations.example.com/api/state
+```
+
+检查 `database: true`，并通过浏览器验证登录、项目和图谱。`/api/state` 可能触发自动迁移。代码更新通常无需重载 Nginx；只有站点配置或证书变更时才测试并重载 Nginx。
 
 从原共享空间版本升级到 1.1.0 时，会保留原数据和成员角色为一个项目，并为没有个人项目的旧用户创建个人项目。数据库标记升级为版本 2；JSON 导出格式仍为版本 1。MySQL 的部分表结构变更不能通过业务事务整体回滚，因此迁移前必须保留完整备份。
 
