@@ -1,6 +1,5 @@
 export const typeColors = { '系统': '#397f74', '账号': '#b07a35', '人员': '#6379a1', '项目': '#8b6b91', '资源': '#71816a', '文档': '#927463' };
 export const defaultTypes = Object.keys(typeColors);
-export const relationTypes = ['使用', '可访问', '负责', '依赖', '部署于', '属于', '同步至', '指向', '存放于', '关联'];
 export const statusNames = { active: '有效', inactive: '停用', archived: '已归档', ended: '已结束' };
 export const roles = { admin: '管理员', editor: '编辑者', viewer: '查看者' };
 export const colorOf = type => typeColors[type] || '#728183';
@@ -56,5 +55,5 @@ export function demoData() {
   const links = [['person1','使用','account1',''],['person2','使用','account2',''],['person2','使用','account3',''],['account1','可访问','crm','管理员'],['account2','可访问','crm','业务人员'],['account3','可访问','erp','审核员'],['project','使用','crm',''],['project','使用','wiki',''],['crm','同步至','erp',''],['crm','依赖','database',''],['crm','部署于','server',''],['database','部署于','server',''],['domain','指向','crm',''],['contract','属于','project',''],['contract','存放于','wiki','']];
   const relations = links.map(([source,type,target,role],i)=>({id:'r'+(i+1),source,type,target,role,status:'active',owner:i===5?'林悦':'陈晓',description:'',evidence:'示例数据 · 用于体验关系结构',start_date:'',end_date:'',verified_at:t,created_at:t,updated_at:t,version:1}));
   relations[4].verified_at='2026-01-01T00:00:00Z';
-  return {entities,relations,entity_types:[],user:null,demo:true,configured:false,workspace:'示例空间',entries:[]};
+  return {entities,relations,entity_types:[],relation_types:[],user:null,demo:true,configured:false,workspace:'示例空间',entries:[]};
 }

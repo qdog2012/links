@@ -35,12 +35,13 @@ try {
     clear_throttle($rate);$db->beginTransaction();make_session($db,$u,$env);$db->commit();reply(['user'=>public_user($u)]);
   }
   if($method==='GET'&&$path==='/api/state') {
-    $u=current_user($db,false);if(!$u)reply(['user'=>null,'configured'=>true,'registration'=>true,'demo'=>true,'database'=>true,'entity_types'=>[]]);
+    $u=current_user($db,false);if(!$u)reply(['user'=>null,'configured'=>true,'registration'=>true,'demo'=>true,'database'=>true,'entity_types'=>[],'relation_types'=>[]]);
     $list=project_list($db,$u);
     $entityTypes=entity_type_options($db,$u);
-    if(!$list)reply(['user'=>public_user($u),'projects'=>[],'project'=>null,'workspace'=>'我的项目','entities'=>[],'relations'=>[],'demo'=>false,'database'=>true,'entity_types'=>$entityTypes]);
+    $relationTypes=relation_type_options($db,$u);
+    if(!$list)reply(['user'=>public_user($u),'projects'=>[],'project'=>null,'workspace'=>'我的项目','entities'=>[],'relations'=>[],'demo'=>false,'database'=>true,'entity_types'=>$entityTypes,'relation_types'=>$relationTypes]);
     $p=project_access($db,$u);$public=public_user($u);$public['role']=$p['role'];
-    reply(['user'=>$public,'projects'=>$list,'project'=>$p,'workspace'=>$p['name'],'demo'=>false,'configured'=>true,'database'=>true,'entity_types'=>$entityTypes,'entities'=>all_records($db,'entities',$p['id']),'relations'=>all_records($db,'relations',$p['id'])]);
+    reply(['user'=>$public,'projects'=>$list,'project'=>$p,'workspace'=>$p['name'],'demo'=>false,'configured'=>true,'database'=>true,'entity_types'=>$entityTypes,'relation_types'=>$relationTypes,'entities'=>all_records($db,'entities',$p['id']),'relations'=>all_records($db,'relations',$p['id'])]);
   }
   $u=current_user($db);
   if($method==='POST'&&$path==='/api/logout') {query($db,'DELETE FROM sessions WHERE token=?',[hash('sha256',$_COOKIE['zhilian_session']??'')]);setcookie('zhilian_session','',['expires'=>1,'path'=>'/','httponly'=>true,'samesite'=>'Strict']);reply(['ok'=>true]);}
@@ -87,11 +88,13 @@ try {
     } else {if($table==='entities')insert_entity($db,$clean,$pid);else insert_relation($db,$clean,$pid);}
     log_change($db,$u,$pid,$before?'修改':'新增',$kind,$id,$clean['name']??$clean['type'],$before,$clean);$result=['record'=>$clean];
     if($table==='entities' && (!$before || $before['type']!==$clean['type'])) remember_entity_type($db,$u,$clean['type']);
+    if($table==='relations' && (!$before || $before['type']!==$clean['type'])) remember_relation_type($db,$u,$clean['type']);
     if($initial) {
       // The object, initial directed relation and both audit entries commit together.
-      $relation=clean_relation(array_merge(['type'=>'关联','owner'=>$clean['owner']?:$u['name'],'status'=>'active','verified_at'=>timestamp()],$data['initial_relation'],['target'=>$id]),$db,$pid);
+      $relation=clean_relation(array_merge(['owner'=>$clean['owner']?:$u['name'],'status'=>'active','verified_at'=>timestamp()],$data['initial_relation'],['target'=>$id]),$db,$pid);
       $relation=array_merge($relation,['id'=>uid(),'version'=>1,'created_at'=>timestamp(),'updated_at'=>timestamp()]);
       insert_relation($db,$relation,$pid);
+      remember_relation_type($db,$u,$relation['type']);
       log_change($db,$u,$pid,'新增','关系',$relation['id'],$relation['type'],null,$relation);
       $result['relation']=$relation;
     }
@@ -101,7 +104,7 @@ try {
     if(!is_array($nodes)||!is_array($edges)||count($nodes)>2000||count($edges)>10000)throw new ApiError('导入最多支持 2000 个对象、10000 条关系');
     $map=[];
     foreach($nodes as $n){if(!is_array($n)||!is_string($n['id']??null)||isset($map[$n['id']]))throw new ApiError('对象编号缺失或重复');$clean=clean_entity($n);$id=uid();$map[$n['id']]=$id;$clean=array_merge($clean,['id'=>$id,'version'=>1,'created_at'=>timestamp(),'updated_at'=>timestamp()]);insert_entity($db,$clean,$pid);remember_entity_type($db,$u,$clean['type']);}
-    foreach($edges as $r){if(!is_array($r)||!isset($map[$r['source']??''])||!isset($map[$r['target']??'']))throw new ApiError('关系引用了不存在的对象');$r['source']=$map[$r['source']];$r['target']=$map[$r['target']];$clean=array_merge(clean_relation($r,$db,$pid),['id'=>uid(),'version'=>1,'created_at'=>timestamp(),'updated_at'=>timestamp()]);insert_relation($db,$clean,$pid);}
+    foreach($edges as $r){if(!is_array($r)||!isset($map[$r['source']??''])||!isset($map[$r['target']??'']))throw new ApiError('关系引用了不存在的对象');$r['source']=$map[$r['source']];$r['target']=$map[$r['target']];$clean=array_merge(clean_relation($r,$db,$pid),['id'=>uid(),'version'=>1,'created_at'=>timestamp(),'updated_at'=>timestamp()]);insert_relation($db,$clean,$pid);remember_relation_type($db,$u,$clean['type']);}
     log_change($db,$u,$pid,'导入','项目',$pid,'导入关联信息',null,['对象数'=>count($nodes),'关系数'=>count($edges)]);$result=['entities'=>count($nodes),'relations'=>count($edges)];
   } elseif($path==='/api/users'&&$method==='POST') {
     project_access($db,$u,$pid,'admin');$role=$data['role']??'editor';if(!in_array($role,['admin','editor','viewer'],true))throw new ApiError('无效的项目角色');
