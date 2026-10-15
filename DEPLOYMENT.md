@@ -297,6 +297,8 @@ mysql --host=127.0.0.1 --user=zhilian --password --default-character-set=utf8mb4
 
 ## 4. 备份、升级与回退
 
+需要 GitHub 有更新时自动发布，可按 [自动更新指南](AUTO_DEPLOY.md) 安装 systemd 定时器。服务器每分钟检查 `main`，先在临时目录构建成功再发布；涉及不兼容数据库迁移时应暂停自动任务，按本节手动维护。
+
 定期使用 MySQL 备份整个 `zhilian` 库，并备份服务器 `.env`；备份放在网站目录之外并限制访问。`backend/storage` 只保存限流记录，不存业务数据。定期把备份恢复到独立数据库，确认能够读取项目和变更记录。
 
 通过 GitHub 更新时，先在测试环境验证新版本，并暂停正式站点访问 / 写入。备份数据库、旧代码、`dist` 和 `.env`，备份放在 `/serverdata/wwwroot/links` 之外。记录当前 `git rev-parse HEAD` 以便确认升级前版本。

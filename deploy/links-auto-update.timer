@@ -1,0 +1,11 @@
+[Unit]
+Description=Check GitHub for Links updates every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=60s
+AccuracySec=5s
+Unit=links-auto-update.service
+
+[Install]
+WantedBy=timers.target

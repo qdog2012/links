@@ -1,0 +1,15 @@
+[Unit]
+Description=Update Links from GitHub main after a successful build
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Replace both with the existing non-root deployment user and its primary group.
+User=links-deploy
+Group=links-deploy
+EnvironmentFile=/etc/links-auto-update.env
+WorkingDirectory=/serverdata/wwwroot/links
+ExecStart=/usr/bin/bash /usr/local/lib/links/auto-update.sh
+TimeoutStartSec=20min
+UMask=0027

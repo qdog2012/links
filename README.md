@@ -4,6 +4,8 @@ React + Vite 前端，PHP 7.4 PDO 后端，MySQL 8.0 数据库。面向小团队
 
 正式部署、HTTPS、MySQL 数据迁移、备份与升级步骤见 [部署指南](DEPLOYMENT.md)。[Nginx 配置模板](deploy/nginx.conf.example) 使用 HTTPS 443，沿用现有 `include php7.inc;` 和 `php7-handler`，适配 PHP 7.4；启用前填写域名、证书与私钥的实际路径。
 
+GitHub `main` 有新提交时，可配置服务器每分钟自动检查、构建并更新，步骤和 systemd 模板见 [自动更新指南](AUTO_DEPLOY.md)。
+
 ## 获取项目
 
 ```bash
