@@ -6,7 +6,7 @@ try {
     try {$db=database($env);reply(['ok'=>true,'database'=>true,'mysql_version'=>$db->query('SELECT VERSION()')->fetchColumn()]);}
     catch(ApiError $e){reply(['ok'=>true,'database'=>false,'message'=>$e->getMessage()]);}
   }
-  if(!in_array($method,['GET','POST','PUT'],true))throw new ApiError('请求方法不支持',405);
+  if(!in_array($method,['GET','POST','PUT','DELETE'],true))throw new ApiError('请求方法不支持',405);
   $data=[];
   if($method!=='GET') {
     $origin=$_SERVER['HTTP_ORIGIN']??'';$host=$_SERVER['HTTP_HOST']??'';$parts=$origin?parse_url($origin):[];
@@ -71,15 +71,41 @@ try {
   $db->beginTransaction();$p=project_access($db,$u,$pid,'editor');
   if(preg_match('#^/api/(entities|relations)(?:/([a-f0-9]{24}))?$#',$path,$matches)) {
     $table=$matches[1];$id=$matches[2]??null;$kind=$table==='entities'?'对象':'关系';
-    if(($method==='PUT')!==($id!==null))throw new ApiError('请求路径不正确',404);
+    if(($method==='POST')!==($id===null))throw new ApiError('请求路径不正确',404);
     $initial=array_key_exists('initial_relation',$data);
     if($initial && ($table!=='entities'||$method!=='POST'||!is_array($data['initial_relation'])))throw new ApiError('起始关系只能在新建对象时指定，且必须为对象格式');
     $before=null;$version=1;
     if($id) {
       $old=query($db,"SELECT * FROM $table WHERE id=? AND project_id=? FOR UPDATE",[$id,$pid])->fetch();if(!$old)throw new ApiError('记录不存在于当前项目',404);
-      if(($data['version']??null)!==(int)$old['version'])throw new ApiError('记录已被其他成员修改，请刷新后重新编辑',409);
+      if(($data['version']??null)!==(int)$old['version'])throw new ApiError($method==='DELETE'?'记录已被其他成员修改，请更新删除预览后重新确认':'记录已被其他成员修改，请刷新后重新编辑',409);
       $before=json_decode($old['body'],true);$version=(int)$old['version']+1;
     } else $id=uid();
+    if($method==='DELETE') {
+      $deletedRelations=[];
+      if($table==='entities') {
+        // Confirm the complete relation snapshot, including ended relations, before removing anything.
+        $rows=query($db,'SELECT * FROM relations WHERE project_id=? AND (source=? OR target=?) ORDER BY id FOR UPDATE',[$pid,$id,$id])->fetchAll();
+        $expected=$data['relations']??null;
+        if(!is_array($expected))throw new ApiError('缺少关联关系的删除预览，请重新确认');
+        $confirmed=[];$actual=[];
+        foreach($expected as $r) {
+          if(!is_array($r)||!is_string($r['id']??null)||!is_int($r['version']??null)||isset($confirmed[$r['id']]))throw new ApiError('关联关系的删除预览格式不正确');
+          $confirmed[$r['id']]=$r['version'];
+        }
+        foreach($rows as $r)$actual[$r['id']]=(int)$r['version'];
+        ksort($confirmed);ksort($actual);
+        if($confirmed!==$actual)throw new ApiError('关联关系已发生变化，请更新删除预览后重新确认',409);
+        foreach($rows as $r) {
+          $relation=json_decode($r['body'],true);
+          log_change($db,$u,$pid,'删除','关系',$r['id'],$relation['type'],$relation,null);
+          $deletedRelations[]=$r['id'];
+        }
+        query($db,'DELETE FROM relations WHERE project_id=? AND (source=? OR target=?)',[$pid,$id,$id]);
+      } else $deletedRelations[]=$id;
+      query($db,"DELETE FROM $table WHERE id=? AND project_id=?",[$id,$pid]);
+      log_change($db,$u,$pid,'删除',$kind,$id,$before['name']??$before['type'],$before,null);
+      $db->commit();reply(['ok'=>true,'deleted_entity'=>$table==='entities'?$id:null,'deleted_relations'=>$deletedRelations]);
+    }
     $clean=$table==='entities'?clean_entity($data):clean_relation($data,$db,$pid);
     $clean=array_merge($clean,['id'=>$id,'version'=>$version,'created_at'=>$before['created_at']??timestamp(),'updated_at'=>timestamp()]);
     if($before) {
@@ -98,7 +124,7 @@ try {
       log_change($db,$u,$pid,'新增','关系',$relation['id'],$relation['type'],null,$relation);
       $result['relation']=$relation;
     }
-  } elseif($path==='/api/import') {
+  } elseif($path==='/api/import'&&$method==='POST') {
     if(($data['format']??'')!=='zhilian-library'||($data['schema_version']??null)!==1)throw new ApiError('请选择织联导出的 JSON 文件（版本 1）');
     $nodes=$data['entities']??null;$edges=$data['relations']??null;
     if(!is_array($nodes)||!is_array($edges)||count($nodes)>2000||count($edges)>10000)throw new ApiError('导入最多支持 2000 个对象、10000 条关系');
