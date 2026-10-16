@@ -66,3 +66,36 @@
 .delete-relations li>span{display:block;font-size:13px;line-height:1.7;color:#667c53}
 .delete-relations small{display:block;font-size:12px;color:#8e9d7f;line-height:1.7;margin-top:3px}
 @media(max-width:680px){.detail-buttons .button{min-height:44px}.delete-summary{padding:13px;gap:10px}.delete-relations ul{max-height:180px}.modal-footer .button.danger{min-height:44px}}
+
+/* Each object keeps its attributes while optionally opening another canvas. */
+.object-node:has(.node-subgraph){height:128px;border-bottom:3px double #a7c5b7}
+.node-subgraph{display:flex;align-items:center;gap:5px;border-top:1px solid #e2e9db;margin-top:9px;padding-top:7px;font-size:11px;color:#397f74}
+.node-subgraph>span{flex:1}
+.node-subgraph svg{flex:none}
+.scope-bar{display:flex;align-items:center;gap:9px;margin:0 30px 11px;min-height:36px;flex-shrink:0;border-bottom:1px solid #e1e7d8;padding-bottom:8px}
+.scope-bar nav{display:flex;flex-direction:row;align-items:center;gap:7px;min-width:0;flex:1;overflow-x:auto;scrollbar-width:thin;white-space:nowrap}
+.scope-bar nav>svg{color:#b0bda1;flex:none}
+.scope-bar nav button{display:flex;align-items:center;justify-content:flex-start;gap:6px;flex:none;width:auto;font-size:13px;color:#879876;min-height:32px;max-width:230px;padding:4px 6px;border-radius:4px}
+.scope-bar nav button span{display:block;flex:initial;overflow:hidden;text-overflow:ellipsis}
+.scope-bar nav button[aria-current=page]{color:#397f74;background:#eaf1e5;font-weight:500}
+.scope-bar nav button:hover{background:#e9f0e1;color:#397f74}
+.scope-back{display:grid;place-items:center;width:32px;height:32px;flex:none;color:#65886b;border:1px solid #dce5d3;border-radius:4px}
+.scope-properties{display:flex;align-items:center;gap:6px;font-size:12px;color:#65886b;flex:none;min-height:32px;padding:4px 7px}
+.scope-properties:hover,.scope-back:hover{background:#eaf1e5}
+.detail-subgraph{display:flex;align-items:center;gap:10px;text-align:left;margin:0 22px 14px;padding:13px 11px;border:1px solid #cddfd0;border-radius:6px;background:#eef5ec;color:#397f74;flex-shrink:0}
+.detail-subgraph>span{flex:1;min-width:0}
+.detail-subgraph b{display:block;font-size:14px;font-weight:500}
+.detail-subgraph small{display:block;font-size:11px;color:#8a9e7a;line-height:1.7;margin-top:3px}
+.detail-subgraph>svg{flex:none}
+.detail-subgraph:hover{background:#e3efdf;border-color:#a9c3ab}
+.subgraph-option{padding:13px;border:1px solid #d9e5d0;border-radius:5px;background:#f1f6eb;align-items:flex-start}
+.subgraph-option input{margin-top:4px;flex:none}
+.subgraph-option span{color:#6b8358}
+.subgraph-option small{display:block;color:#97a786;font-size:12px;line-height:1.8;margin-top:3px}
+.delete-relations+.delete-relations{margin-top:12px}
+.page-head>div:first-child{min-width:0}
+.page-head h1{overflow-wrap:anywhere;display:block}
+.page-head h1 .head-dot{display:inline-block;margin-left:12px}
+@media(max-width:1250px){.scope-bar{margin-left:22px;margin-right:22px}}
+@media(max-width:850px){.scope-bar{margin-left:20px;margin-right:20px}}
+@media(max-width:680px){.scope-bar{margin:0 12px 9px;gap:4px}.scope-bar nav{gap:2px}.scope-bar nav button{font-size:12px;max-width:145px;min-height:38px}.scope-back{width:36px;height:38px}.scope-properties{width:35px;height:38px;justify-content:center}.scope-properties span{display:none}.detail-subgraph{min-height:56px;margin-left:18px;margin-right:18px}.page-head h1{font-size:21px}.page-actions{flex:none}}

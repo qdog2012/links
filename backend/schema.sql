@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE IF NOT EXISTS entities (
  id VARCHAR(32) PRIMARY KEY, project_id VARCHAR(32) NOT NULL,
+ parent_id VARCHAR(32) NULL, INDEX(project_id,parent_id),
  body JSON NOT NULL, version INT NOT NULL DEFAULT 1,
  FOREIGN KEY(project_id) REFERENCES projects(id), UNIQUE(project_id,id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

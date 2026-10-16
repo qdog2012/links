@@ -70,6 +70,10 @@ function clean_entity($data) {
   if(!is_array($fields)||count($fields)>30) throw new ApiError('扩展字段格式不正确');
   foreach($fields as $k=>$v) if(!is_string($v)||strlen((string)$k)>240||strlen($v)>6000) throw new ApiError('扩展字段格式不正确');
   $n['tags']=array_values(array_unique($tags)); $n['fields']=(object)$fields; $n['verified_at']=date_field($data,'verified_at');
+  $n['parent_id']=$data['parent_id']??null;
+  if($n['parent_id']!==null&&(!is_string($n['parent_id'])||!preg_match('/^[a-f0-9]{24}$/D',$n['parent_id'])))throw new ApiError('子图所属对象编号不正确');
+  $n['has_subgraph']=$data['has_subgraph']??false;
+  if(!is_bool($n['has_subgraph']))throw new ApiError('子图开关必须为布尔值');
   foreach(['x','y'] as $k) if(isset($data[$k])) { if(!is_numeric($data[$k])||!is_finite((float)$data[$k])||abs((float)$data[$k])>10000) throw new ApiError('节点位置不正确'); $n[$k]=(float)$data[$k]; }
   return $n;
 }
@@ -77,18 +81,21 @@ function clean_relation($data,$db,$project) {
   $r=[]; foreach(['source'=>32,'target'=>32,'type'=>60,'role'=>120,'owner'=>120,'description'=>5000,'evidence'=>2000] as $k=>$limit) $r[$k]=string_field($data,$k,$limit);
   if(!$r['source']||!$r['target']||!$r['type']) throw new ApiError('请选择两端对象并填写关系类型');
   if($r['source']===$r['target']) throw new ApiError('请选择两个不同的对象');
-  foreach(['source','target'] as $k) if(!query($db,'SELECT id FROM entities WHERE id=? AND project_id=?',[$r[$k],$project])->fetch()) throw new ApiError('关联对象不存在或不属于当前项目');
+  $parents=[];
+  foreach(['source','target'] as $k){$node=query($db,'SELECT parent_id FROM entities WHERE id=? AND project_id=?',[$r[$k],$project])->fetch();if(!$node)throw new ApiError('关联对象不存在或不属于当前项目');$parents[]=$node['parent_id'];}
+  if($parents[0]!==$parents[1])throw new ApiError('关系两端必须在同一图层，请在上层通过所属对象建立关联');
   $r['status']=$data['status']??'active'; if(!in_array($r['status'],['active','ended'],true)) throw new ApiError('无效的关系状态');
   foreach(['verified_at','start_date','end_date'] as $k) $r[$k]=date_field($data,$k);
   if($r['start_date'] && $r['end_date'] && $r['start_date']>$r['end_date']) throw new ApiError('结束日期不能早于开始日期');
   return $r;
 }
 function all_records($db,$table,$project) {
-  return array_map(function($r){$v=json_decode($r['body'],true);$v['version']=(int)$r['version'];return $v;},query($db,"SELECT * FROM $table WHERE project_id=?",[$project])->fetchAll());
+  return array_map(function($r)use($table){if($table==='entities')return entity_record($r);$v=json_decode($r['body'],true);$v['version']=(int)$r['version'];return $v;},query($db,"SELECT * FROM $table WHERE project_id=?",[$project])->fetchAll());
 }
-function insert_entity($db,$n,$project) { query($db,'INSERT INTO entities(id,project_id,body,version) VALUES(?,?,?,?)',[$n['id'],$project,json_encode($n,JSON_UNESCAPED_UNICODE),$n['version']]); }
+function insert_entity($db,$n,$project) { query($db,'INSERT INTO entities(id,project_id,parent_id,body,version) VALUES(?,?,?,?,?)',[$n['id'],$project,$n['parent_id']??null,json_encode($n,JSON_UNESCAPED_UNICODE),$n['version']]); }
 function insert_relation($db,$r,$project) { query($db,'INSERT INTO relations(id,project_id,source,target,body,version) VALUES(?,?,?,?,?,?)',[$r['id'],$project,$r['source'],$r['target'],json_encode($r,JSON_UNESCAPED_UNICODE),$r['version']]); }
 require ROOT.'/entity-types.php';
 require ROOT.'/relation-types.php';
+require ROOT.'/subgraphs.php';
 require ROOT.'/projects.php';
 require ROOT.'/dispatch.php';

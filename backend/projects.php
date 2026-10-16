@@ -41,17 +41,18 @@ function throttle($action,$limit=10) {
 function clear_throttle($path) {$f=fopen($path,'c+');if($f){flock($f,LOCK_EX);ftruncate($f,0);rewind($f);fwrite($f,'[]');flock($f,LOCK_UN);fclose($f);}}
 function ensure_schema($db) {
   $settings=(bool)query($db,"SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='settings'")->fetch();
-  if($settings && query($db,"SELECT value FROM settings WHERE `key`='schema_version'")->fetchColumn()==='4') return;
+  if($settings && query($db,"SELECT value FROM settings WHERE `key`='schema_version'")->fetchColumn()==='5') return;
   $lock='zhilian_schema_'.substr(hash('sha256',(string)$db->query('SELECT DATABASE()')->fetchColumn()),0,24);
   if((int)query($db,'SELECT GET_LOCK(?,15)',[$lock])->fetchColumn()!==1) throw new ApiError('数据库正在升级，请稍后重试',503);
   try {
     if(!$settings) {migrate($db);}
     $version=query($db,"SELECT value FROM settings WHERE `key`='schema_version'")->fetchColumn();
-    if($version==='4') return;
+    if($version==='5') return;
+    if($version==='4') {migrate_subgraphs($db);return;}
     // Existing tables remain intact; create new tables before adding project columns.
     migrate($db);
-    if($version==='3') {migrate_relation_type_history($db);return;}
-    if($version==='2') {migrate_entity_type_history($db);migrate_relation_type_history($db);return;}
+    if($version==='3') {migrate_relation_type_history($db);migrate_subgraphs($db);return;}
+    if($version==='2') {migrate_entity_type_history($db);migrate_relation_type_history($db);migrate_subgraphs($db);return;}
     foreach(['entities','relations','audit'] as $table) {
       if(!query($db,"SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name='project_id'",[$table])->fetch()) $db->exec("ALTER TABLE $table ADD COLUMN project_id VARCHAR(32) NULL, ADD INDEX(project_id)");
     }
@@ -72,5 +73,6 @@ function ensure_schema($db) {
     query($db,"INSERT INTO settings(`key`,value) VALUES('schema_version','2') ON DUPLICATE KEY UPDATE value='2'");
     migrate_entity_type_history($db);
     migrate_relation_type_history($db);
+    migrate_subgraphs($db);
   } finally {query($db,'SELECT RELEASE_LOCK(?)',[$lock]);}
 }

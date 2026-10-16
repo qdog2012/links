@@ -65,7 +65,7 @@ try {
       reply(['entries'=>$entries]);
     }
     if($path==='/api/users') {project_access($db,$u,$pid,'admin');reply(['users'=>project_members($db,$pid)]);}
-    if($path==='/api/export') {project_access($db,$u,$pid,'editor');reply(['format'=>'zhilian-library','schema_version'=>1,'project_name'=>$p['name'],'exported_at'=>timestamp(),'entities'=>all_records($db,'entities',$pid),'relations'=>all_records($db,'relations',$pid)]);}
+    if($path==='/api/export') {project_access($db,$u,$pid,'editor');reply(['format'=>'zhilian-library','schema_version'=>2,'project_name'=>$p['name'],'exported_at'=>timestamp(),'entities'=>all_records($db,'entities',$pid),'relations'=>all_records($db,'relations',$pid)]);}
     throw new ApiError('接口不存在',404);
   }
   $db->beginTransaction();$p=project_access($db,$u,$pid,'editor');
@@ -78,35 +78,30 @@ try {
     if($id) {
       $old=query($db,"SELECT * FROM $table WHERE id=? AND project_id=? FOR UPDATE",[$id,$pid])->fetch();if(!$old)throw new ApiError('记录不存在于当前项目',404);
       if(($data['version']??null)!==(int)$old['version'])throw new ApiError($method==='DELETE'?'记录已被其他成员修改，请更新删除预览后重新确认':'记录已被其他成员修改，请刷新后重新编辑',409);
-      $before=json_decode($old['body'],true);$version=(int)$old['version']+1;
+      $before=$table==='entities'?entity_record($old):json_decode($old['body'],true);$version=(int)$old['version']+1;
     } else $id=uid();
     if($method==='DELETE') {
-      $deletedRelations=[];
+      $deletedRelations=[];$descendants=[];
       if($table==='entities') {
-        // Confirm the complete relation snapshot, including ended relations, before removing anything.
-        $rows=query($db,'SELECT * FROM relations WHERE project_id=? AND (source=? OR target=?) ORDER BY id FOR UPDATE',[$pid,$id,$id])->fetchAll();
-        $expected=$data['relations']??null;
-        if(!is_array($expected))throw new ApiError('缺少关联关系的删除预览，请重新确认');
-        $confirmed=[];$actual=[];
-        foreach($expected as $r) {
-          if(!is_array($r)||!is_string($r['id']??null)||!is_int($r['version']??null)||isset($confirmed[$r['id']]))throw new ApiError('关联关系的删除预览格式不正确');
-          $confirmed[$r['id']]=$r['version'];
-        }
-        foreach($rows as $r)$actual[$r['id']]=(int)$r['version'];
-        ksort($confirmed);ksort($actual);
-        if($confirmed!==$actual)throw new ApiError('关联关系已发生变化，请更新删除预览后重新确认',409);
+        // The project lock serializes all descendant/edge writes with this complete preview.
+        $descendants=entity_descendants($id,all_records($db,'entities',$pid));
+        confirm_deletion_snapshot($data['descendants']??[],$descendants,'子图对象');
+        $removed=array_fill_keys(array_merge([$id],array_column($descendants,'id')),true);
+        $rows=array_values(array_filter(all_records($db,'relations',$pid),function($r)use($removed){return isset($removed[$r['source']])||isset($removed[$r['target']]);}));
+        confirm_deletion_snapshot($data['relations']??null,$rows,'关联关系');
         foreach($rows as $r) {
-          $relation=json_decode($r['body'],true);
-          log_change($db,$u,$pid,'删除','关系',$r['id'],$relation['type'],$relation,null);
+          log_change($db,$u,$pid,'删除','关系',$r['id'],$r['type'],$r,null);
+          query($db,'DELETE FROM relations WHERE project_id=? AND id=?',[$pid,$r['id']]);
           $deletedRelations[]=$r['id'];
         }
-        query($db,'DELETE FROM relations WHERE project_id=? AND (source=? OR target=?)',[$pid,$id,$id]);
+        foreach(array_reverse($descendants) as $n){query($db,'DELETE FROM entities WHERE project_id=? AND id=?',[$pid,$n['id']]);log_change($db,$u,$pid,'删除','对象',$n['id'],$n['name'],$n,null);}
       } else $deletedRelations[]=$id;
       query($db,"DELETE FROM $table WHERE id=? AND project_id=?",[$id,$pid]);
       log_change($db,$u,$pid,'删除',$kind,$id,$before['name']??$before['type'],$before,null);
-      $db->commit();reply(['ok'=>true,'deleted_entity'=>$table==='entities'?$id:null,'deleted_relations'=>$deletedRelations]);
+      $db->commit();reply(['ok'=>true,'deleted_entity'=>$table==='entities'?$id:null,'deleted_descendants'=>array_column($descendants,'id'),'deleted_relations'=>$deletedRelations]);
     }
-    $clean=$table==='entities'?clean_entity($data):clean_relation($data,$db,$pid);
+    $clean=$table==='entities'?clean_entity(array_merge(['parent_id'=>$before['parent_id']??null,'has_subgraph'=>$before['has_subgraph']??false],$data)):clean_relation($data,$db,$pid);
+    if($table==='entities')validate_entity_scope($db,$pid,$clean,$before);
     $clean=array_merge($clean,['id'=>$id,'version'=>$version,'created_at'=>$before['created_at']??timestamp(),'updated_at'=>timestamp()]);
     if($before) {
       if($table==='entities')query($db,'UPDATE entities SET body=?,version=? WHERE id=? AND project_id=?',[json_encode($clean,JSON_UNESCAPED_UNICODE),$version,$id,$pid]);
@@ -125,11 +120,12 @@ try {
       $result['relation']=$relation;
     }
   } elseif($path==='/api/import'&&$method==='POST') {
-    if(($data['format']??'')!=='zhilian-library'||($data['schema_version']??null)!==1)throw new ApiError('请选择织联导出的 JSON 文件（版本 1）');
+    if(($data['format']??'')!=='zhilian-library'||!in_array($data['schema_version']??null,[1,2],true))throw new ApiError('请选择织联导出的 JSON 文件（版本 1 或 2）');
     $nodes=$data['entities']??null;$edges=$data['relations']??null;
     if(!is_array($nodes)||!is_array($edges)||count($nodes)>2000||count($edges)>10000)throw new ApiError('导入最多支持 2000 个对象、10000 条关系');
-    $map=[];
-    foreach($nodes as $n){if(!is_array($n)||!is_string($n['id']??null)||isset($map[$n['id']]))throw new ApiError('对象编号缺失或重复');$clean=clean_entity($n);$id=uid();$map[$n['id']]=$id;$clean=array_merge($clean,['id'=>$id,'version'=>1,'created_at'=>timestamp(),'updated_at'=>timestamp()]);insert_entity($db,$clean,$pid);remember_entity_type($db,$u,$clean['type']);}
+    $map=[];$ordered=hierarchy_order($nodes);
+    foreach($ordered as $n)$map[$n['id']]=uid();
+    foreach($ordered as $n){$id=$map[$n['id']];$n['parent_id']=isset($n['parent_id'])?$map[$n['parent_id']]:null;$clean=clean_entity($n);validate_entity_scope($db,$pid,$clean);$clean=array_merge($clean,['id'=>$id,'version'=>1,'created_at'=>timestamp(),'updated_at'=>timestamp()]);insert_entity($db,$clean,$pid);remember_entity_type($db,$u,$clean['type']);}
     foreach($edges as $r){if(!is_array($r)||!isset($map[$r['source']??''])||!isset($map[$r['target']??'']))throw new ApiError('关系引用了不存在的对象');$r['source']=$map[$r['source']];$r['target']=$map[$r['target']];$clean=array_merge(clean_relation($r,$db,$pid),['id'=>uid(),'version'=>1,'created_at'=>timestamp(),'updated_at'=>timestamp()]);insert_relation($db,$clean,$pid);remember_relation_type($db,$u,$clean['type']);}
     log_change($db,$u,$pid,'导入','项目',$pid,'导入关联信息',null,['对象数'=>count($nodes),'关系数'=>count($edges)]);$result=['entities'=>count($nodes),'relations'=>count($edges)];
   } elseif($path==='/api/users'&&$method==='POST') {
